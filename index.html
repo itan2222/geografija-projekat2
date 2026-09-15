@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Zemlja i Sunce — projekat iz geografije</title>
+<meta name="description" content="Interaktivni 3D prikaz kretanja Zemlje oko Sunca, mreže meridijana i paralela, hemisfera i velikih naučnika sveta.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&display=swap&subset=latin,latin-ext" rel="stylesheet">
+<style>
+  :root{
+    --void:#04060f;
+    --deep:#0a1226;
+    --panel:rgba(10,18,38,.78);
+    --edge:rgba(126,173,255,.22);
+    --ink:#e6edf9;
+    --ink-dim:#8fa3c4;
+    --sun-1:#ffcf5c;
+    --sun-2:#ff8a3d;
+    --sea:#5fd4ff;
+    --grid:#9ad8ff;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:var(--void);
+    color:var(--ink);
+    font-family:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  canvas{display:block}
+  #scene{position:fixed;inset:0}
+
+  /* ---------- naslov ---------- */
+  #title{
+    position:fixed;top:22px;left:24px;z-index:6;
+    max-width:min(46vw,420px);pointer-events:none;
+  }
+  #title h1{
+    font-family:"Space Grotesk",system-ui,sans-serif;
+    font-weight:700;font-size:clamp(20px,2.6vw,32px);
+    line-height:1.05;margin:0;letter-spacing:-.02em;
+  }
+  #title h1 span{display:block;color:var(--sun-1)}
+  #title p{
+    margin:8px 0 0;font-size:13px;line-height:1.5;color:var(--ink-dim);max-width:34ch;
+  }
+
+  /* ---------- komandna traka ---------- */
+  #controls{
+    position:fixed;left:24px;bottom:24px;z-index:7;
+    display:flex;flex-direction:column;gap:8px;width:272px;
+  }
+  .btn{
+    display:flex;align-items:center;gap:12px;width:100%;
+    padding:12px 14px;border-radius:12px;cursor:pointer;
+    background:var(--panel);border:1px solid var(--edge);
+    color:var(--ink);font:inherit;font-size:14px;text-align:left;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    transition:border-color .18s,background .18s,transform .18s;
+  }
+  .btn:hover{border-color:rgba(126,173,255,.55);transform:translateX(3px)}
+  .btn:focus-visible{outline:2px solid var(--sun-1);outline-offset:2px}
+  .btn .num{
+    flex:0 0 26px;height:26px;border-radius:8px;
+    display:grid;place-items:center;
+    font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:13px;
+    background:rgba(126,173,255,.12);color:var(--grid);
+    transition:background .18s,color .18s;
+  }
+  .btn .lbl{flex:1;line-height:1.25}
+  .btn .lbl small{display:block;font-size:11px;color:var(--ink-dim);margin-top:2px}
+  .btn[aria-pressed="true"]{
+    background:linear-gradient(180deg,rgba(255,207,92,.18),rgba(255,138,61,.10));
+    border-color:rgba(255,207,92,.6);
+  }
+  .btn[aria-pressed="true"] .num{background:var(--sun-1);color:#121a0a}
+
+  .sub{
+    display:none;gap:6px;padding-left:38px;
+  }
+  .sub.open{display:flex}
+  .sub button{
+    flex:1;padding:8px 6px;font:inherit;font-size:12px;cursor:pointer;
+    background:rgba(10,18,38,.7);border:1px solid var(--edge);border-radius:9px;color:var(--ink-dim);
+  }
+  .sub button[aria-pressed="true"]{color:#121a0a;background:var(--grid);border-color:var(--grid);font-weight:600}
+  .sub button:focus-visible{outline:2px solid var(--sun-1);outline-offset:2px}
+
+  /* ---------- brzina + brojač ---------- */
+  #meter{
+    position:fixed;right:24px;top:22px;z-index:6;width:236px;
+    background:var(--panel);border:1px solid var(--edge);border-radius:14px;
+    padding:14px 16px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  }
+  #meter h2{
+    margin:0 0 10px;font-family:"Space Grotesk",sans-serif;font-size:13px;font-weight:500;
+    color:var(--ink-dim);letter-spacing:.01em;
+  }
+  .stat{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:7px 0}
+  .stat b{
+    font-family:"Space Grotesk",sans-serif;font-size:19px;font-weight:700;color:var(--sun-1);
+    font-variant-numeric:tabular-nums;
+  }
+  .stat span{font-size:12px;color:var(--ink-dim);line-height:1.3;text-align:right}
+  .bar{height:5px;border-radius:3px;background:rgba(126,173,255,.15);overflow:hidden;margin-top:4px}
+  .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--sea),var(--sun-1));border-radius:3px}
+  #speedRow{margin-top:12px;padding-top:12px;border-top:1px solid var(--edge)}
+  #speedRow label{font-size:12px;color:var(--ink-dim);display:block;margin-bottom:6px}
+  input[type=range]{width:100%;accent-color:var(--sun-1)}
+
+  /* ---------- objašnjenje ---------- */
+  #info{
+    position:fixed;right:24px;bottom:24px;z-index:6;width:300px;max-height:46vh;overflow:auto;
+    background:var(--panel);border:1px solid var(--edge);border-radius:14px;padding:16px 18px;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  }
+  #info h3{margin:0 0 8px;font-family:"Space Grotesk",sans-serif;font-size:15px;font-weight:700}
+  #info p{margin:0 0 9px;font-size:13px;line-height:1.55;color:#c4d2e8}
+  #info ul{margin:0;padding-left:16px}
+  #info li{font-size:12.5px;line-height:1.55;color:#c4d2e8;margin-bottom:5px}
+  #info b{color:var(--ink)}
+  #info .key{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+
+  /* ---------- oznake u 3D ---------- */
+  #labels{position:fixed;inset:0;z-index:4;pointer-events:none;overflow:hidden}
+  .lab{
+    position:absolute;transform:translate(-50%,-50%);
+    font-size:11.5px;line-height:1.25;white-space:nowrap;
+    padding:3px 8px;border-radius:7px;
+    background:rgba(4,8,18,.72);border:1px solid rgba(154,216,255,.3);
+    color:#dcebff;opacity:0;transition:opacity .2s;
+  }
+  .lab.major{font-weight:600;border-color:rgba(255,207,92,.5);color:#ffe3a8;font-size:12.5px}
+  .lab.hemi{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:13px;background:rgba(4,8,18,.6)}
+  .lab.date{font-size:11px;color:#9fb6d8;border-color:rgba(126,173,255,.2)}
+
+  /* ---------- tooltip naučnika ---------- */
+  #tip{
+    position:fixed;z-index:9;width:260px;pointer-events:none;opacity:0;
+    transform:translate(-50%,calc(-100% - 16px));transition:opacity .15s;
+    background:rgba(6,12,26,.95);border:1px solid rgba(255,207,92,.45);border-radius:12px;
+    padding:12px 14px;box-shadow:0 18px 40px rgba(0,0,0,.55);
+  }
+  #tip .cty{font-size:11px;color:var(--sun-1);margin-bottom:3px}
+  #tip .nm{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:16px;margin-bottom:5px}
+  #tip .txt{font-size:12.5px;line-height:1.5;color:#c4d2e8}
+  #tip .yr{font-size:11px;color:var(--ink-dim);margin-top:6px}
+
+  /* ---------- potpis ---------- */
+  #sign{
+    position:fixed;right:14px;bottom:6px;z-index:8;
+    font-size:10px;letter-spacing:.08em;color:rgba(143,163,196,.75);
+    pointer-events:none;
+  }
+
+  #hint{
+    position:fixed;left:50%;bottom:10px;transform:translateX(-50%);z-index:5;
+    font-size:11px;color:rgba(143,163,196,.6);text-align:center;pointer-events:none;
+  }
+
+  #loader{
+    position:fixed;inset:0;z-index:20;display:grid;place-items:center;
+    background:var(--void);transition:opacity .6s;
+  }
+  #loader p{font-family:"Space Grotesk",sans-serif;color:var(--ink-dim);font-size:14px}
+  #loader.gone{opacity:0;pointer-events:none}
+
+  /* ---------- telefon / tablet ---------- */
+  @media (max-width:900px){
+    #title{top:12px;left:12px;max-width:52vw}
+    #title h1{font-size:17px}
+    #title p{display:none}
+    #meter{
+      right:12px;top:10px;width:auto;padding:8px 10px;
+      display:flex;gap:14px;align-items:center;
+    }
+    #meter h2,#meter .bar,#meter #speedRow{display:none}
+    #meter .stat{flex-direction:column;align-items:flex-end;gap:0;margin:0}
+    #meter .stat b{font-size:15px}
+    #meter .stat span{font-size:9.5px}
+    #controls{
+      left:0;right:0;bottom:0;width:100%;
+      flex-direction:row;flex-wrap:nowrap;overflow-x:auto;gap:6px;
+      padding:8px 10px calc(8px + env(safe-area-inset-bottom));
+      background:linear-gradient(180deg,transparent,rgba(4,6,15,.85) 40%);
+    }
+    #controls .btn{width:auto;flex:0 0 auto;padding:9px 12px;font-size:12.5px}
+    #controls .btn .lbl small{display:none}
+    .sub{position:static;padding:0;width:auto}
+    .sub.open{display:flex;flex:0 0 auto;gap:4px}
+    .sub button{white-space:nowrap;padding:9px 10px}
+    #info{
+      left:12px;right:12px;bottom:74px;width:auto;max-height:30vh;padding:12px 14px;
+    }
+    #info p{font-size:12px}
+    #hint{display:none}
+    #sign{bottom:calc(56px + env(safe-area-inset-bottom));right:12px}
+  }
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+</style>
+</head>
+<body>
+
+<div id="scene"></div>
+<div id="labels"></div>
+
+<header id="title">
+  <h1>Zemlja i Sunce<span>kako se naša planeta kreće</span></h1>
+  <p>Zemlja se okrene oko svoje ose 365 puta dok jednom obiđe Sunce. Pusti animaciju i prati brojače.</p>
+</header>
+
+<section id="meter" aria-live="polite">
+  <h2>Brojači kretanja</h2>
+  <div class="stat"><b id="spins">0</b><span>okreta oko ose<br>(1 okret = 1 dan)</span></div>
+  <div class="stat"><b id="orbitPct">0%</b><span id="dateTxt">1. januar</span></div>
+  <div class="bar"><i id="orbitBar"></i></div>
+  <div id="speedRow">
+    <label for="speed">Brzina: <span id="speedVal">1,0</span> dana u sekundi</label>
+    <input id="speed" type="range" min="0.2" max="12" step="0.2" value="1">
+  </div>
+</section>
+
+<nav id="controls">
+  <button class="btn" id="b1" aria-pressed="false">
+    <span class="num">1</span>
+    <span class="lbl">Pokreni kretanje<small>rotacija i revolucija</small></span>
+  </button>
+
+  <button class="btn" id="b2" aria-pressed="false">
+    <span class="num">2</span>
+    <span class="lbl">Meridijani i ekvator<small>geografska mreža</small></span>
+  </button>
+
+  <button class="btn" id="b3" aria-pressed="false">
+    <span class="num">3</span>
+    <span class="lbl">Hemisfere<small>polulopte Zemlje</small></span>
+  </button>
+  <div class="sub" id="sub3">
+    <button id="hNS" aria-pressed="true">Severna i južna</button>
+    <button id="hEW" aria-pressed="false">Istočna i zapadna</button>
+  </div>
+
+  <button class="btn" id="b4" aria-pressed="false">
+    <span class="num">4</span>
+    <span class="lbl">Naučnici sveta<small>pređi mišem preko bele tačke</small></span>
+  </button>
+
+  <button class="btn" id="b5" aria-pressed="false">
+    <span class="num">◎</span>
+    <span class="lbl">Pogled na ceo sistem<small>Sunce i putanja Zemlje</small></span>
+  </button>
+</nav>
+
+<aside id="info">
+  <h3 id="infoTitle">Dobro došli</h3>
+  <div id="infoBody">
+    <p>Ovo je 3D model Sunčevog sistema — prikazani su samo Sunce i Zemlja. Pritisni dugmad levo da otkriješ svaki deo lekcije.</p>
+    <p>Mišem prevlači da zavrtiš pogled, točkićem zumiraj. Na telefonu: prevlačenje prstom i štipanje.</p>
+    <p style="color:#8fa3c4;font-size:12px">Veličine Sunca i Zemlje, kao i rastojanje među njima, nisu prikazani u pravoj razmeri — inače Zemlja ne bi bila veća od tačke.</p>
+  </div>
+</aside>
+
+<div id="tip" role="tooltip">
+  <div class="cty" id="tipCty"></div>
+  <div class="nm" id="tipNm"></div>
+  <div class="txt" id="tipTxt"></div>
+  <div class="yr" id="tipYr"></div>
+</div>
+
+<p id="hint">prevuci mišem da zavrtiš pogled · točkić = zum</p>
+<div id="sign">itan bakočević</div>
+
+<div id="loader"><p>učitavanje Zemlje…</p></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
+        onerror="document.getElementById('loader').innerHTML='<p>Potrebna je internet veza da bi se 3D model učitao.<br>Proveri konekciju i osveži stranicu.</p>'"></script>
+<script>
+(function(){
+"use strict";
+
+/* ============================================================
+   1. OSNOVNA SCENA
+   ============================================================ */
+var EARTH_R = 1.5, SUN_R = 3.0, ORBIT_R = 14, TILT = 23.44 * Math.PI/180;
+var SPIN0 = -Math.PI; /* početni zaokret: na startu je Evropa okrenuta Suncu */
+
+var scene = new THREE.Scene();
+var camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 2000);
+var renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputEncoding = THREE.sRGBEncoding;
+document.getElementById('scene').appendChild(renderer.domElement);
+
+/* ============================================================
+   2. ZVEZDE
+   ============================================================ */
+(function stars(){
+  var g = new THREE.BufferGeometry(), n = 1800, p = new Float32Array(n*3);
+  for(var i=0;i<n;i++){
+    var r = 300 + Math.random()*400;
+    var t = Math.acos(2*Math.random()-1), f = Math.random()*Math.PI*2;
+    p[i*3]   = r*Math.sin(t)*Math.cos(f);
+    p[i*3+1] = r*Math.cos(t);
+    p[i*3+2] = r*Math.sin(t)*Math.sin(f);
+  }
+  g.setAttribute('position', new THREE.BufferAttribute(p,3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({color:0xbcd2f5,size:1.6,sizeAttenuation:false,transparent:true,opacity:.85})));
+})();
+
+/* ============================================================
+   3. SUNCE
+   ============================================================ */
+var sun = new THREE.Group(); scene.add(sun);
+sun.add(new THREE.Mesh(
+  new THREE.SphereGeometry(SUN_R, 64, 48),
+  new THREE.MeshBasicMaterial({color:0xffd98a})
+));
+function glowTex(){
+  var c = document.createElement('canvas'); c.width = c.height = 256;
+  var x = c.getContext('2d');
+  var g = x.createRadialGradient(128,128,0,128,128,128);
+  g.addColorStop(0,'rgba(255,226,160,.95)');
+  g.addColorStop(.25,'rgba(255,180,80,.45)');
+  g.addColorStop(.6,'rgba(255,130,40,.14)');
+  g.addColorStop(1,'rgba(255,120,30,0)');
+  x.fillStyle = g; x.fillRect(0,0,256,256);
+  return new THREE.CanvasTexture(c);
+}
+var glow = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex(),blending:THREE.AdditiveBlending,transparent:true,depthWrite:false}));
+glow.scale.set(SUN_R*7, SUN_R*7, 1); sun.add(glow);
+
+var sunLight = new THREE.PointLight(0xfff0d4, 1.9, 0, 0);
+scene.add(sunLight);
+var ambient = new THREE.AmbientLight(0x6f8ec4, 0.22);
+scene.add(ambient);
+
+/* ============================================================
+   4. PUTANJA + OZNAKE DATUMA
+   ============================================================ */
+(function orbitRing(){
+  var pts = [], i;
+  for(i=0;i<=256;i++){
+    var a = i/256*Math.PI*2;
+    pts.push(new THREE.Vector3(Math.cos(a)*ORBIT_R, 0, -Math.sin(a)*ORBIT_R));
+  }
+  var g = new THREE.BufferGeometry().setFromPoints(pts);
+  scene.add(new THREE.Line(g, new THREE.LineBasicMaterial({color:0x5c7ab0, transparent:true, opacity:.35})));
+})();
+
+/* dan u godini -> ugao na putanji */
+function dayAngle(day){ return (day + 10) / 365.25 * Math.PI * 2; }
+function orbitPos(day){
+  var a = dayAngle(day);
+  return new THREE.Vector3(Math.cos(a)*ORBIT_R, 0, -Math.sin(a)*ORBIT_R);
+}
+
+/* ============================================================
+   5. ZEMLJA (nagib ose + rotacija)
+   ============================================================ */
+var earthPivot = new THREE.Group(); scene.add(earthPivot);
+var tiltGroup  = new THREE.Group(); tiltGroup.rotation.z = -TILT; earthPivot.add(tiltGroup);
+var spinGroup  = new THREE.Group(); tiltGroup.add(spinGroup);
+
+var earthMat = new THREE.MeshPhongMaterial({color:0xffffff, shininess:3, specular:0x0a1018});
+var earth = new THREE.Mesh(new THREE.SphereGeometry(EARTH_R, 96, 64), earthMat);
+spinGroup.add(earth);
+
+/* --- rezervna tekstura ako nema interneta --- */
+function fallbackTexture(){
+  var w = 2048, h = 1024;
+  var c = document.createElement('canvas'); c.width = w; c.height = h;
+  var x = c.getContext('2d');
+  var og = x.createLinearGradient(0,0,0,h);
+  og.addColorStop(0,'#123a63'); og.addColorStop(.5,'#0f4f84'); og.addColorStop(1,'#123a63');
+  x.fillStyle = og; x.fillRect(0,0,w,h);
+  function P(pts, fill){
+    x.beginPath();
+    for(var i=0;i<pts.length;i+=2){
+      var px = (pts[i]+180)/360*w, py = (90-pts[i+1])/180*h;
+      if(i===0) x.moveTo(px,py); else x.lineTo(px,py);
+    }
+    x.closePath(); x.fillStyle = fill; x.fill();
+  }
+  var L='#3f7a46', D='#e9f2ff';
+  P([-168,66,-150,70,-125,70,-95,73,-80,73,-62,66,-56,52,-66,45,-72,41,-76,35,-81,25,-97,16,-105,20,-114,30,-124,40,-124,48,-130,55,-141,60,-156,60,-166,62],L);           // Severna Amerika
+  P([-81,9,-72,11,-60,10,-52,0,-35,-6,-38,-23,-48,-33,-58,-40,-66,-45,-72,-52,-76,-50,-72,-38,-70,-20,-76,-5,-79,2],L);                                                    // Južna Amerika
+  P([-17,15,-10,25,0,32,10,37,25,32,35,31,43,12,51,12,48,0,40,-5,40,-17,33,-26,25,-34,18,-34,12,-18,8,4,-5,4,-12,8,-17,15],L);                                             // Afrika
+  P([-10,36,0,44,10,44,20,42,28,40,30,45,30,60,25,70,60,70,90,73,120,73,145,70,160,68,170,66,180,64,180,55,140,50,130,42,122,30,120,22,108,10,100,5,95,20,90,22,80,8,72,20,60,25,50,28,45,38,35,38,28,36,15,38,3,36,-10,36],L); // Evroazija
+  P([113,-22,129,-12,142,-11,150,-22,153,-28,150,-37,140,-38,129,-32,115,-34,113,-22],L);                                                                                   // Australija
+  P([-180,-72,-140,-75,-100,-74,-60,-70,-20,-70,20,-70,60,-67,100,-66,140,-67,180,-72,180,-90,-180,-90],D);                                                                 // Antarktik
+  P([-55,60,-30,58,-18,70,-25,83,-45,83,-58,76],D);                                                                                                                         // Grenland
+  var t = new THREE.CanvasTexture(c);
+  t.encoding = THREE.sRGBEncoding;
+  return t;
+}
+
+/* --- prava tekstura Zemlje, sa dva izvora --- */
+var loader = new THREE.TextureLoader();
+loader.setCrossOrigin('anonymous');
+function loadEarth(urls, i){
+  if(i >= urls.length){ earthMat.map = fallbackTexture(); earthMat.needsUpdate = true; hideLoader(); return; }
+  loader.load(urls[i], function(tex){
+    tex.encoding = THREE.sRGBEncoding;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    earthMat.map = tex; earthMat.needsUpdate = true; hideLoader();
+  }, undefined, function(){ loadEarth(urls, i+1); });
+}
+loadEarth([
+  'https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-blue-marble.jpg',
+  'https://unpkg.com/three-globe/example/img/earth-day.jpg'
+], 0);
+
+function hideLoader(){
+  var l = document.getElementById('loader');
+  l.classList.add('gone'); setTimeout(function(){ l.style.display='none'; }, 700);
+}
+setTimeout(hideLoader, 9000);
+
+/* osa Zemlje */
+var axis = new THREE.Line(
+  new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-EARTH_R*1.55,0), new THREE.Vector3(0,EARTH_R*1.55,0)]),
+  new THREE.LineBasicMaterial({color:0xffcf5c, transparent:true, opacity:.6})
+);
+tiltGroup.add(axis);
+
+/* ============================================================
+   6. KOORDINATE: (širina, dužina) -> tačka na lopti
+   ============================================================ */
+function ll(lat, lon, r){
+  var phi = (lon + 180) * Math.PI/180;
+  var th  = (90 - lat) * Math.PI/180;
+  return new THREE.Vector3(
+    -r * Math.cos(phi) * Math.sin(th),
+     r * Math.cos(th),
+     r * Math.sin(phi) * Math.sin(th)
+  );
+}
+
+/* ============================================================
+   7. HTML OZNAKE koje prate 3D tačke
+   ============================================================ */
+var labelLayer = document.getElementById('labels');
+var labels = [];
+function addLabel(text, obj, cls, group){
+  var el = document.createElement('div');
+  el.className = 'lab' + (cls ? ' ' + cls : '');
+  el.textContent = text;
+  labelLayer.appendChild(el);
+  var L = {el:el, obj:obj, group:group, hideBack:(group!=='orbit')};
+  labels.push(L); return L;
+}
+var _v = new THREE.Vector3(), _c = new THREE.Vector3();
+var panelRects = [];
+function measurePanels(){
+  panelRects = ['title','controls','meter','info'].map(function(id){
+    var r = document.getElementById(id).getBoundingClientRect();
+    return {l:r.left-14, r:r.right+14, t:r.top-10, b:r.bottom+10};
+  });
+}
+measurePanels();
+window.addEventListener('resize', measurePanels);
+setInterval(measurePanels, 1500);
+function behindPanel(x, y){
+  for(var i=0;i<panelRects.length;i++){
+    var p = panelRects[i];
+    if(x > p.l && x < p.r && y > p.t && y < p.b) return true;
+  }
+  return false;
+}
+function updateLabels(){
+  var ec = earthPivot.position;
+  for(var i=0;i<labels.length;i++){
+    var L = labels[i];
+    if(!modeOn(L.group)){ L.el.style.opacity = 0; continue; }
+    L.obj.getWorldPosition(_v);
+    var vis = true;
+    if(L.hideBack){
+      _c.copy(camera.position).sub(_v).normalize();
+      var nrm = _v.clone().sub(ec).normalize();
+      vis = nrm.dot(_c) > 0.12;
+    }
+    var p = _v.clone().project(camera);
+    if(p.z > 1) vis = false;
+    var sx = (p.x*0.5+0.5) * window.innerWidth;
+    var sy = (-p.y*0.5+0.5) * window.innerHeight;
+    if(L.group === 'orbit' && behindPanel(sx, sy)) vis = false;
+    if(!vis){ L.el.style.opacity = 0; continue; }
+    L.el.style.opacity = 1;
+    L.el.style.left = sx + 'px';
+    L.el.style.top  = sy + 'px';
+  }
+}
+function anchor(parent, pos){
+  var o = new THREE.Object3D(); o.position.copy(pos); parent.add(o); return o;
+}
+
+/* ============================================================
+   8. DUGME 2 — GEOGRAFSKA MREŽA
+   ============================================================ */
+var gridGroup = new THREE.Group(); gridGroup.visible = false; spinGroup.add(gridGroup);
+
+function circleLine(points, color, opacity, width){
+  var g = new THREE.BufferGeometry().setFromPoints(points);
+  return new THREE.Line(g, new THREE.LineBasicMaterial({color:color, transparent:true, opacity:opacity, linewidth:width||1}));
+}
+function parallel(lat, r, color, op){
+  var pts = [], i;
+  for(i=0;i<=180;i++) pts.push(ll(lat, -180 + i*2, r));
+  return circleLine(pts, color, op);
+}
+function meridian(lon, r, color, op){
+  var pts = [], i;
+  for(i=0;i<=180;i++) pts.push(ll(-90 + i, lon, r));
+  return circleLine(pts, color, op);
+}
+var GR = EARTH_R * 1.004;
+
+/* tanka mreža */
+for(var lo=-180; lo<180; lo+=15) gridGroup.add(meridian(lo, GR, 0x9ad8ff, .28));
+for(var la=-75; la<=75; la+=15){
+  if(la===0) continue;
+  gridGroup.add(parallel(la, GR, 0x9ad8ff, .22));
+}
+/* istaknute linije */
+var eq = parallel(0, GR*1.002, 0xffcf5c, 1); gridGroup.add(eq);
+gridGroup.add(parallel(0, GR*1.0035, 0xffcf5c, .55));
+gridGroup.add(meridian(0, GR*1.002, 0xff8a3d, 1));
+gridGroup.add(meridian(180, GR*1.002, 0x7dffc0, .9));
+gridGroup.add(parallel(23.44, GR*1.001, 0xffe9a8, .75));
+gridGroup.add(parallel(-23.44, GR*1.001, 0xffe9a8, .75));
+gridGroup.add(parallel(66.56, GR*1.001, 0xa9d6ff, .75));
+gridGroup.add(parallel(-66.56, GR*1.001, 0xa9d6ff, .75));
+
+/* oznake mreže */
+addLabel('Ekvator — 0° geografske širine',            anchor(gridGroup, ll(0, -25, GR*1.03)), 'major', 'grid');
+addLabel('Nulti (Grinički) meridijan — 0°',           anchor(gridGroup, ll(18, 0, GR*1.06)),  'major', 'grid');
+addLabel('180. meridijan — datumska granica',         anchor(gridGroup, ll(8, 180, GR*1.06)), '',      'grid');
+addLabel('Severna povratnica (Rakova) 23,5° s.g.š.',  anchor(gridGroup, ll(23.44, 55, GR*1.02)), '',  'grid');
+addLabel('Južna povratnica (Jarčeva) 23,5° j.g.š.',   anchor(gridGroup, ll(-23.44, 55, GR*1.02)), '', 'grid');
+addLabel('Severni polarnik 66,5° s.g.š.',             anchor(gridGroup, ll(66.56, -50, GR*1.03)), '',  'grid');
+addLabel('Južni polarnik 66,5° j.g.š.',               anchor(gridGroup, ll(-66.56, -50, GR*1.03)), '', 'grid');
+addLabel('Severni pol — 90° s.g.š.',                   anchor(gridGroup, ll(83, 10, GR*1.06)), 'major','grid');
+addLabel('Južni pol — 90° j.g.š.',                     anchor(gridGroup, ll(-83, 10, GR*1.06)),'major','grid');
+addLabel('meridijani (podnevci)',                     anchor(gridGroup, ll(-52, 72, GR*1.02)), '',    'grid');
+addLabel('paralele (uporednici)',                     anchor(gridGroup, ll(38, -32, GR*1.03)), '',   'grid');
+
+/* ============================================================
+   9. DUGME 3 — HEMISFERE
+   ============================================================ */
+var hemiGroup = new THREE.Group(); hemiGroup.visible = false; spinGroup.add(hemiGroup);
+var HR = EARTH_R * 1.012;
+function shell(phiS, phiL, thS, thL, color){
+  var m = new THREE.Mesh(
+    new THREE.SphereGeometry(HR, 64, 48, phiS, phiL, thS, thL),
+    new THREE.MeshBasicMaterial({color:color, transparent:true, opacity:.34, side:THREE.DoubleSide, depthWrite:false})
+  );
+  hemiGroup.add(m); return m;
+}
+var HALF = Math.PI/2;
+var nsGroup = new THREE.Group(), ewGroup = new THREE.Group();
+hemiGroup.add(nsGroup); hemiGroup.add(ewGroup);
+function shellIn(parent, phiS, phiL, thS, thL, color){
+  var m = shell(phiS, phiL, thS, thL, color); hemiGroup.remove(m); parent.add(m); return m;
+}
+/* severna / južna: presek je ekvator */
+shellIn(nsGroup, 0, Math.PI*2, 0, HALF, 0x5fd4ff);
+shellIn(nsGroup, 0, Math.PI*2, HALF, HALF, 0xff8a3d);
+/* istočna / zapadna: presek su 0° i 180° meridijan */
+shellIn(ewGroup, 0, Math.PI, 0, Math.PI, 0xc79bff);   /* zapadna: lon -180..0 */
+shellIn(ewGroup, Math.PI, Math.PI, 0, Math.PI, 0x7dffc0); /* istočna: lon 0..180 */
+/* debela granična linija */
+nsGroup.add(parallel(0, HR*1.004, 0xffffff, .9));
+ewGroup.add(meridian(0, HR*1.004, 0xffffff, .9));
+ewGroup.add(meridian(180, HR*1.004, 0xffffff, .9));
+
+addLabel('Severna hemisfera (polulopta)', anchor(nsGroup, ll(42, 10, HR*1.12)),  'hemi', 'hemiNS');
+addLabel('Južna hemisfera (polulopta)',   anchor(nsGroup, ll(-42, 10, HR*1.12)), 'hemi', 'hemiNS');
+addLabel('granica: ekvator',              anchor(nsGroup, ll(0, -48, HR*1.05)),   '',     'hemiNS');
+addLabel('Istočna hemisfera',             anchor(ewGroup, ll(14, 58, HR*1.12)),   'hemi', 'hemiEW');
+addLabel('Zapadna hemisfera',             anchor(ewGroup, ll(14, -42, HR*1.12)),  'hemi', 'hemiEW');
+addLabel('granica: nulti meridijan',      anchor(ewGroup, ll(-40, 0, HR*1.08)),  '',     'hemiEW');
+
+/* ============================================================
+   10. DUGME 4 — NAUČNICI
+   ============================================================ */
+var PEOPLE = [
+ {n:'Milutin Milanković', c:'Srbija · Beograd',        y:'1879—1958', lat:44.82, lon:20.46,  t:'Objasnio kako promene Zemljine putanje i nagiba ose izazivaju ledena doba — Milankovićevi ciklusi.'},
+ {n:'Jovan Cvijić',       c:'Srbija · Loznica',        y:'1865—1927', lat:44.53, lon:19.22,  t:'Utemeljivač srpske geografije. Proučavao je kraške (karstne) oblike i naselja Balkanskog poluostrva.'},
+ {n:'Nikola Kopernik',    c:'Poljska · Torunj',        y:'1473—1543', lat:53.02, lon:18.61,  t:'Dokazao da Sunce, a ne Zemlja, stoji u središtu — Zemlja se okreće oko Sunca i oko svoje ose.'},
+ {n:'Galileo Galilej',    c:'Italija · Piza',          y:'1564—1642', lat:43.72, lon:10.40,  t:'Teleskopom je posmatrao Jupiterove mesece i time potvrdio da se nebeska tela kreću oko drugih tela.'},
+ {n:'Isak Njutn',         c:'Engleska · Vulstorp',     y:'1643—1727', lat:52.81, lon:-0.63,  t:'Zakonom gravitacije objasnio je zašto Zemlja ostaje u putanji oko Sunca, a ne odleti u svemir.'},
+ {n:'Aleksandar fon Humbolt', c:'Nemačka · Berlin',    y:'1769—1859', lat:52.52, lon:13.40,  t:'Otac moderne geografije. Prvi je na kartama povezao mesta sa istom temperaturom (izoterme).'},
+ {n:'Alfred Vegener',     c:'Nemačka · Marburg',       y:'1880—1930', lat:50.80, lon:8.77,   t:'Postavio teoriju o pomeranju kontinenata — nekada su svi bili spojeni u superkontinent Pangeu.'},
+ {n:'Eratosten',          c:'Egipat · Aleksandrija',   y:'276—194. p.n.e.', lat:31.20, lon:29.92, t:'Pomoću senke i štapa izmerio obim Zemlje pre više od 2200 godina, sa greškom od svega par procenata.'},
+ {n:'Aristotel',          c:'Grčka · Atina',           y:'384—322. p.n.e.', lat:37.98, lon:23.73, t:'Prvi je naveo dokaze da je Zemlja lopta: okrugla senka na Mesecu i različite zvezde na raznim širinama.'},
+ {n:'Ferdinand Magelan',  c:'Portugal · Lisabon',      y:'1480—1521', lat:38.72, lon:-9.14,  t:'Vodio prvu ekspediciju koja je oplovila celu Zemlju i tako je praktično dokazala da je okrugla.'},
+ {n:'Ibn Batuta',         c:'Maroko · Tanger',         y:'1304—1369', lat:35.77, lon:-5.80,  t:'Najveći putopisac srednjeg veka — prešao je oko 120.000 km i opisao zemlje tri kontinenta.'},
+ {n:'Vladimir Kepen',     c:'Rusija · Sankt Peterburg',y:'1846—1940', lat:59.93, lon:30.34,  t:'Napravio podelu klimata na Zemlji koja se i danas uči u školama — Kepenova klasifikacija.'},
+ {n:'Fritjof Nansen',     c:'Norveška · Oslo',         y:'1861—1930', lat:59.91, lon:10.75,  t:'Polarni istraživač i okeanograf; brodom Fram pustio se da ga led nosi ka Severnom polu.'},
+ {n:'Džang Heng',         c:'Kina · Luojang',          y:'78—139',    lat:34.62, lon:112.45, t:'Napravio prvi uređaj koji je otkrivao zemljotrese — seizmoskop, više od 1800 godina pre današnjih.'},
+ {n:'Arjabata',           c:'Indija · Udžajin',        y:'476—550',   lat:23.18, lon:75.78,  t:'Zapisao da se Zemlja okreće oko svoje ose i tako objasnio smenu dana i noći.'},
+ {n:'Ino Tadataka',       c:'Japan · Tokio',           y:'1745—1818', lat:35.68, lon:139.65, t:'Peške je premerio celu obalu Japana i napravio prvu tačnu kartu svoje zemlje.'},
+ {n:'Metju Mori',         c:'SAD · Virdžinija',        y:'1806—1873', lat:38.03, lon:-78.48, t:'Otac okeanografije — sastavio prve karte morskih struja i vetrova za brodove.'},
+ {n:'Meri Tarp',          c:'SAD · Mičigen',           y:'1920—2006', lat:42.24, lon:-83.61, t:'Kartografkinja koja je nacrtala prvu kartu dna okeana i otkrila srednjookeansku dolinu.'},
+ {n:'Fransisko Moreno',   c:'Argentina · Buenos Ajres',y:'1852—1919', lat:-34.60, lon:-58.38, t:'Istraživač Patagonije i Anda; po njemu je nazvan poznati ledenik Perito Moreno.'},
+ {n:'Daglas Moson',       c:'Australija · Adelejd',    y:'1882—1958', lat:-34.93, lon:138.60, t:'Istraživač Antarktika koji je preživeo sam povratak od preko 100 km po ledu.'}
+];
+
+var dotGroup = new THREE.Group(); dotGroup.visible = false; spinGroup.add(dotGroup);
+var dotGeo  = new THREE.SphereGeometry(0.032, 16, 12);
+var haloGeo = new THREE.SphereGeometry(0.075, 16, 12);
+var dots = [], hitTargets = [];
+PEOPLE.forEach(function(p){
+  var pos = ll(p.lat, p.lon, EARTH_R*1.012);
+  var m = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({color:0xffffff}));
+  m.position.copy(pos); m.userData = p;
+  dotGroup.add(m); dots.push(m); hitTargets.push(m);
+  var halo = new THREE.Mesh(haloGeo, new THREE.MeshBasicMaterial({color:0xbfe4ff, transparent:true, opacity:.22, depthWrite:false}));
+  halo.position.copy(pos); halo.userData = p;
+  dotGroup.add(halo); hitTargets.push(halo);
+  p.dot = m;
+});
+
+/* ============================================================
+   11. OZNAKE DATUMA NA PUTANJI (vidljive u pogledu na sistem)
+   ============================================================ */
+var dateMarks = new THREE.Group(); scene.add(dateMarks);
+[
+  {d:172, s:'21. jun · leto na severu'},
+  {d:355, s:'21. decembar · zima na severu'},
+  {d:79,  s:'21. mart · ravnodnevica'},
+  {d:266, s:'23. septembar · ravnodnevica'}
+].forEach(function(o){
+  var pos = orbitPos(o.d).multiplyScalar(1.08);
+  var mk = new THREE.Mesh(new THREE.SphereGeometry(0.16,10,8), new THREE.MeshBasicMaterial({color:0x9fb6d8}));
+  mk.position.copy(orbitPos(o.d)); dateMarks.add(mk);
+  addLabel(o.s, anchor(dateMarks, pos), 'date', 'orbit');
+});
+
+/* ============================================================
+   12. KAMERA — sopstvena kontrola (miš + dodir)
+   ============================================================ */
+var startD = 30 * Math.max(1, 0.78 / (window.innerWidth/window.innerHeight));
+var cam  = { theta: 2.30, phi: 1.02, dist: startD, target: new THREE.Vector3(0,0,0) };
+var want = { theta: 2.30, phi: 1.02, dist: startD, target: new THREE.Vector3(0,0,0) };
+var dragging = false, lastX = 0, lastY = 0, pinch = 0;
+
+function applyCamera(dt){
+  var k = 1 - Math.pow(0.00005, Math.min(dt, 0.1));
+  cam.dist += (want.dist - cam.dist) * k;
+  cam.target.lerp(want.target, k);
+  var dth = want.theta - cam.theta;
+  dth = Math.atan2(Math.sin(dth), Math.cos(dth));
+  cam.theta += dth * k;
+  cam.phi += (want.phi - cam.phi) * k;
+  cam.phi = Math.max(0.12, Math.min(Math.PI - 0.12, cam.phi));
+  var x = cam.dist * Math.sin(cam.phi) * Math.cos(cam.theta);
+  var y = cam.dist * Math.cos(cam.phi);
+  var z = cam.dist * Math.sin(cam.phi) * Math.sin(cam.theta);
+  camera.position.set(cam.target.x + x, cam.target.y + y, cam.target.z + z);
+  camera.lookAt(cam.target);
+}
+var el = renderer.domElement;
+el.addEventListener('mousedown', function(e){ dragging = true; lastX = e.clientX; lastY = e.clientY; });
+window.addEventListener('mouseup', function(){ dragging = false; });
+window.addEventListener('mousemove', function(e){
+  if(dragging){
+    cam.theta -= (e.clientX - lastX) * 0.006;
+    cam.phi   -= (e.clientY - lastY) * 0.006;
+    want.theta = cam.theta; want.phi = cam.phi;
+    lastX = e.clientX; lastY = e.clientY;
+  }
+  pointer.x = (e.clientX/window.innerWidth)*2 - 1;
+  pointer.y = -(e.clientY/window.innerHeight)*2 + 1;
+  pointerPx.x = e.clientX; pointerPx.y = e.clientY;
+});
+el.addEventListener('wheel', function(e){
+  e.preventDefault();
+  want.dist = Math.max(fit(state.view === 'earth' ? 2.4 : 8), Math.min(fit(90), want.dist * (1 + Math.sign(e.deltaY)*0.12)));
+}, {passive:false});
+el.addEventListener('touchstart', function(e){
+  if(e.touches.length === 1){
+    dragging = true; lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+    pointerPx.x = lastX; pointerPx.y = lastY;
+    pointer.x = (lastX/window.innerWidth)*2 - 1;
+    pointer.y = -(lastY/window.innerHeight)*2 + 1;
+  }
+  if(e.touches.length === 2){
+    pinch = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+  }
+}, {passive:true});
+el.addEventListener('touchmove', function(e){
+  if(e.touches.length === 1 && dragging){
+    cam.theta -= (e.touches[0].clientX - lastX) * 0.008;
+    cam.phi   -= (e.touches[0].clientY - lastY) * 0.008;
+    want.theta = cam.theta; want.phi = cam.phi;
+    lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+    pointerPx.x = e.touches[0].clientX; pointerPx.y = e.touches[0].clientY;
+    pointer.x = (lastX/window.innerWidth)*2 - 1;
+    pointer.y = -(lastY/window.innerHeight)*2 + 1;
+  } else if(e.touches.length === 2){
+    var d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+    if(pinch) want.dist = Math.max(fit(state.view === 'earth' ? 2.4 : 8), Math.min(fit(90), want.dist * (pinch/d)));
+    pinch = d;
+  }
+}, {passive:true});
+el.addEventListener('touchend', function(){ dragging = false; pinch = 0; });
+
+/* ============================================================
+   13. STANJE + UI
+   ============================================================ */
+var state = { running:false, day:0, daysPerSec:1, grid:false, hemi:false, hemiMode:'NS', people:false, view:'system' };
+function modeOn(g){
+  if(!g) return false;
+  if(g === 'grid')   return state.grid;
+  if(g === 'hemiNS') return state.hemi && state.hemiMode === 'NS';
+  if(g === 'hemiEW') return state.hemi && state.hemiMode === 'EW';
+  if(g === 'orbit')  return state.view === 'system';
+  return false;
+}
+
+var $ = function(id){ return document.getElementById(id); };
+function press(id, on){ $(id).setAttribute('aria-pressed', on ? 'true' : 'false'); }
+
+var INFO = {
+  move: ['Rotacija i revolucija',
+    '<p><b>Rotacija</b> je okretanje Zemlje oko sopstvene ose. Jedan pun okret traje <b>24 sata</b> i od njega zavisi smena dana i noći — osvetljena strana je dan, tamna je noć.</p>'+
+    '<p><b>Revolucija</b> je kretanje Zemlje oko Sunca. Jedan krug traje <b>365 dana i 6 sati</b> (zato svake četvrte godine imamo prestupnu godinu).</p>'+
+    '<p>Zato brojač okreta raste brzo, a napredak oko Sunca skoro da stoji: Zemlja se zavrti <b>365 puta</b> za samo jedan obilazak Sunca.</p>'+
+    '<p>Osa je nagnuta za <b>23,5°</b> i uvek gleda u istu stranu — zbog toga postoje godišnja doba.</p>'],
+  grid: ['Geografska mreža',
+    '<ul>'+
+    '<li><b>Ekvator</b> — najduža paralela, deli Zemlju na severnu i južnu polovinu. Njegova širina je 0°.</li>'+
+    '<li><b>Paralele (uporednici)</b> — krugovi paralelni ekvatoru. Što su bliže polovima, to su manji. Mere <b>geografsku širinu</b> od 0° do 90° severno ili južno.</li>'+
+    '<li><b>Meridijani (podnevci)</b> — polukrugovi od Severnog do Južnog pola, svi iste dužine. Mere <b>geografsku dužinu</b> od 0° do 180° istočno ili zapadno.</li>'+
+    '<li><b>Nulti (Grinički) meridijan</b> — početni meridijan, prolazi kroz Grinič u Londonu.</li>'+
+    '<li><b>180. meridijan</b> — nasuprot nultom; po njemu ide datumska granica.</li>'+
+    '<li><b>Povratnice</b> na 23,5° — do njih Sunce može doći u zenit.</li>'+
+    '<li><b>Polarnici</b> na 66,5° — granice polarnog dana i noći.</li>'+
+    '</ul>'],
+  hemiNS: ['Severna i južna hemisfera',
+    '<p><b>Hemisfera</b> (polulopta) je polovina Zemljine lopte. Ekvator je deli po širini:</p>'+
+    '<ul><li><span class="key" style="background:#5fd4ff"></span><b>Severna hemisfera</b> — sve severno od ekvatora. Tu je veći deo kopna i Srbija.</li>'+
+    '<li><span class="key" style="background:#ff8a3d"></span><b>Južna hemisfera</b> — sve južno od ekvatora, pretežno okeani. Godišnja doba su joj obrnuta od naših.</li></ul>'],
+  hemiEW: ['Istočna i zapadna hemisfera',
+    '<p>Nulti i 180. meridijan zajedno čine jedan pun krug koji deli Zemlju po dužini:</p>'+
+    '<ul><li><span class="key" style="background:#7dffc0"></span><b>Istočna hemisfera</b> — istočno od nultog meridijana: Evropa, Azija, Afrika, Australija.</li>'+
+    '<li><span class="key" style="background:#c79bff"></span><b>Zapadna hemisfera</b> — zapadno od nultog meridijana: Severna i Južna Amerika.</li></ul>'],
+  people: ['Naučnici sveta',
+    '<p>Bele tačke stoje na mestima odakle potiču naučnici i istraživači koji su nam objasnili kako Zemlja izgleda i kako se kreće.</p>'+
+    '<p>Pređi mišem preko tačke (ili je dodirni na telefonu) da pročitaš šta je ko otkrio. Ima ih '+PEOPLE.length+', a dva su iz Srbije.</p>'+'<p style="color:#8fa3c4;font-size:12px">U Evropi su tačke zbijene — zumiraj točkićem (ili štipanjem) da ih razdvojiš.</p>'],
+  system: ['Pogled na ceo sistem',
+    '<p>Odavde se vidi cela putanja Zemlje oko Sunca i četiri važna datuma na njoj: dve ravnodnevice i dve dugodnevice.</p>'+
+    '<p>Primeti da osa Zemlje uvek gleda u istu stranu. Kada je severni kraj ose nagnut ka Suncu, kod nas je leto; šest meseci kasnije nagnut je od Sunca i kod nas je zima.</p>']
+};
+function setInfo(key){
+  if(!INFO[key]) return;
+  $('infoTitle').textContent = INFO[key][0];
+  $('infoBody').innerHTML = INFO[key][1];
+}
+
+/* dugme 1 — kretanje */
+$('b1').addEventListener('click', function(){
+  state.running = !state.running;
+  press('b1', state.running);
+  $('b1').querySelector('.lbl').firstChild.nodeValue = state.running ? 'Zaustavi kretanje' : 'Pokreni kretanje';
+  if(state.running) setInfo('move');
+});
+/* dugme 2 — mreža */
+$('b2').addEventListener('click', function(){
+  state.grid = !state.grid;
+  gridGroup.visible = state.grid;
+  press('b2', state.grid);
+  if(state.grid){ focusEarth(); setInfo('grid'); }
+});
+/* dugme 3 — hemisfere */
+$('b3').addEventListener('click', function(){
+  state.hemi = !state.hemi;
+  press('b3', state.hemi);
+  $('sub3').classList.toggle('open', state.hemi);
+  applyHemi();
+  if(state.hemi){ focusEarth(); setInfo(state.hemiMode === 'NS' ? 'hemiNS' : 'hemiEW'); }
+});
+$('hNS').addEventListener('click', function(){ state.hemiMode='NS'; applyHemi(); setInfo('hemiNS'); });
+$('hEW').addEventListener('click', function(){ state.hemiMode='EW'; applyHemi(); setInfo('hemiEW'); });
+function applyHemi(){
+  hemiGroup.visible = state.hemi;
+  nsGroup.visible = state.hemiMode === 'NS';
+  ewGroup.visible = state.hemiMode === 'EW';
+  press('hNS', state.hemiMode === 'NS');
+  press('hEW', state.hemiMode === 'EW');
+}
+/* dugme 4 — naučnici */
+$('b4').addEventListener('click', function(){
+  state.people = !state.people;
+  dotGroup.visible = state.people;
+  press('b4', state.people);
+  if(state.people){
+    focusEarth(); setInfo('people');
+    if(state.running){ state.running = false; press('b1', false);
+      $('b1').querySelector('.lbl').firstChild.nodeValue = 'Pokreni kretanje'; }
+  } else hideTip();
+});
+/* dugme 5 — pogled */
+$('b5').addEventListener('click', function(){
+  if(state.view === 'system') focusEarth(); else focusSystem();
+});
+function fit(d){ return d * Math.max(1, 0.78 / camera.aspect); }
+function focusEarth(){
+  state.view = 'earth'; want.dist = fit(6.2); want.theta = 2.967; want.phi = 1.35; press('b5', true);
+  $('b5').querySelector('.lbl').firstChild.nodeValue = 'Pogled na ceo sistem';
+}
+function focusSystem(){
+  state.view = 'system'; want.dist = fit(30); want.theta = 2.30; want.phi = 1.02; press('b5', false);
+  $('b5').querySelector('.lbl').firstChild.nodeValue = 'Priđi bliže Zemlji';
+  setInfo('system');
+}
+focusSystem();
+
+/* brzina */
+$('speed').addEventListener('input', function(e){
+  state.daysPerSec = parseFloat(e.target.value);
+  $('speedVal').textContent = state.daysPerSec.toFixed(1).replace('.', ',');
+});
+
+/* tastatura: 1-4 */
+window.addEventListener('keydown', function(e){
+  if(e.key === '1') $('b1').click();
+  if(e.key === '2') $('b2').click();
+  if(e.key === '3') $('b3').click();
+  if(e.key === '4') $('b4').click();
+});
+
+/* ============================================================
+   14. HOVER NAD TAČKAMA
+   ============================================================ */
+var ray = new THREE.Raycaster();
+var pointer = new THREE.Vector2(-5,-5), pointerPx = {x:0,y:0};
+var tip = $('tip'), tipOn = null;
+function showTip(p){
+  if(tipOn === p.n) { placeTip(); return; }
+  tipOn = p.n;
+  $('tipCty').textContent = p.c;
+  $('tipNm').textContent  = p.n;
+  $('tipTxt').textContent = p.t;
+  $('tipYr').textContent  = p.y;
+  tip.style.opacity = 1; placeTip();
+}
+function placeTip(){
+  var x = Math.max(140, Math.min(window.innerWidth - 140, pointerPx.x));
+  var y = Math.max(150, pointerPx.y);
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+function hideTip(){ tip.style.opacity = 0; tipOn = null; }
+function checkHover(){
+  if(!state.people){ if(tipOn) hideTip(); return; }
+  ray.setFromCamera(pointer, camera);
+  var hit = ray.intersectObjects(hitTargets, false);
+  for(var i=0;i<dots.length;i++) dots[i].scale.setScalar(1);
+  if(hit.length){
+    el.style.cursor = 'pointer';
+    var per = hit[0].object.userData;
+    if(per.dot) per.dot.scale.setScalar(1.9);
+    showTip(per);
+  } else {
+    el.style.cursor = dragging ? 'grabbing' : 'grab';
+    if(tipOn) hideTip();
+  }
+}
+
+/* ============================================================
+   15. DATUM IZ DANA U GODINI
+   ============================================================ */
+var MON = ['januar','februar','mart','april','maj','jun','jul','avgust','septembar','oktobar','novembar','decembar'];
+var MLEN = [31,28,31,30,31,30,31,31,30,31,30,31];
+function dateText(day){
+  var d = Math.floor(day % 365), m = 0;
+  while(d >= MLEN[m]){ d -= MLEN[m]; m++; if(m > 11) m = 0; }
+  return (d+1) + '. ' + MON[m];
+}
+
+/* ============================================================
+   16. PETLJA
+   ============================================================ */
+var clock = new THREE.Clock();
+function tick(){
+  requestAnimationFrame(tick);
+  var dt = Math.min(clock.getDelta(), 0.05);
+
+  if(state.running) state.day += dt * state.daysPerSec;
+
+  /* položaj u orbiti + rotacija oko ose */
+  earthPivot.position.copy(orbitPos(state.day));
+  spinGroup.rotation.y = SPIN0 + state.day * Math.PI * 2;
+
+  if(state.view === 'earth') want.target.copy(earthPivot.position);
+  else want.target.set(0,0,0);
+
+  applyCamera(dt);
+  checkHover();
+  updateLabels();
+  dateMarks.visible = state.view === 'system';
+
+  /* dok traje lekcija, blago osvetli i noćnu stranu da se linije vide */
+  var wantAmb = (state.grid || state.hemi || state.people) ? 0.50 : 0.22;
+  ambient.intensity += (wantAmb - ambient.intensity) * Math.min(1, dt*4);
+
+  /* brojači */
+  $('spins').textContent = Math.floor(state.day).toLocaleString('sr-RS');
+  var pct = (state.day % 365.25) / 365.25;
+  $('orbitPct').textContent = Math.round(pct*100) + '%';
+  $('orbitBar').style.width = (pct*100) + '%';
+  $('dateTxt').textContent = dateText(state.day);
+
+  renderer.render(scene, camera);
+}
+tick();
+
+window.addEventListener('resize', function(){
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  want.dist = fit(state.view === 'earth' ? 6.2 : 30);
+});
+})();
+</script>
+</body>
+</html>
